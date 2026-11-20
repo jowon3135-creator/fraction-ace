@@ -802,7 +802,9 @@ function frame(now) {
   if(player&&!status.hidden) {
     const label=stage.number+' '+stage.name+' · '+ship.name+'<br>체력 '+player.hp+'/'+ship.hp+' · 구간 '+(wave+1)+'/'+waves.length+
       '<progress class="player-health '+(player.hp/ship.hp<=.34?'low':'')+'" aria-label="기체 잔여 체력" value="'+player.hp+'" max="'+ship.hp+'"></progress>';
-    if(status.innerHTML!==label)status.innerHTML=label;
+    const supply=enemies.find(enemy=>enemy.item&&enemy.hp>0);
+    const hud=supply?label+'보급 기체 체력 '+Math.ceil(supply.hp)+' / '+supply.max:label;
+    if(status.innerHTML!==hud)status.innerHTML=hud;
   } else if(status.innerHTML!=='1 정글 상공')status.innerHTML='1 정글 상공';
   requestAnimationFrame(frame);
 }
