@@ -22,7 +22,7 @@ const waves = regularWaveCounts.flatMap(count=>[count,1]);
 const bossWave = waves.length-1;
 const quizzesPerStage = regularWaveCounts.length-1;
 const routes = [240,111,369];
-const shotInterval = .50;
+const shotInterval = 1/3;
 const supportRules = {
   supply:{interval:2,batch:3,cap:10},
   boss:{interval:7,batch:1,cap:3}
@@ -131,8 +131,8 @@ function spawn(reinforcement=false) {
   const x=boss||item?240:routes[lane]+([0,-22,22][Math.floor(spawned/3)%3]);
   const tier=reinforcement?Math.max(0,Math.floor(wave/2)-1):Math.floor(wave/2);
   const health=15+15*tier;
-  const bossHealth=stage.number===8?100000:20000+2000*(stage.number-1);
-  const hp=boss?bossHealth:item?6000+500*tier:health;
+  const bossHealth=stage.number===8?5000:1000+300*(stage.number-1);
+  const hp=boss?bossHealth:item?100+50*tier:health;
   const sideEntry=!boss&&!item&&[4,6,7].includes(stage.number);
   enemies.push({x,y:sideEntry?36:-95,boss,item,reinforcement,hp,max:hp,age:0,tier,lane,slot:spawned,baseX:x,flightTime:0,shot:item?1.55:.76+(spawned%4)*.29,
     fired:false, pattern:null, attackBag:[], attackClock:.85, supportClock:boss?5:supportRules.supply.interval});
