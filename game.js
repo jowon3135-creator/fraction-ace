@@ -17,13 +17,16 @@ for(const model of ships) {
   model.image.onload=()=>{if(mode==='menu')drawShipPreviews();};
   model.image.src='assets/ships/'+model.asset+'.png';
 }
-const waves = [5,1,10,1,15,1,20,1,25,1,30,1];
+const regularWaveCounts = [5,10,15,20,25,30,5,10,15,20,25,30];
+const waves = regularWaveCounts.flatMap(count=>[count,1]);
+const bossWave = waves.length-1;
+const quizzesPerStage = regularWaveCounts.length-1;
 const routes = [240,111,369];
-const enemyHealth = [14,23,33,44,56,69];
-const supplyHealth = [550,640,730,820,910];
-const bossHealth = 9600;
-const shotInterval = .20;
-const reinforcementInterval = {supply:6,boss:7};
+const shotInterval = .50;
+const supportRules = {
+  supply:{interval:2,batch:3,cap:10},
+  boss:{interval:7,batch:1,cap:3}
+};
 const wallCard = 7;
 const enemySize = {normal:37,item:55,boss:185,drone:24};
 const bossPatterns = ['정면 발사','범위 탄막','레이저 빔','추적 미사일','충돌형 소형기'];
@@ -109,8 +112,8 @@ function start(index,stageIndex=0) {
   keys.clear();
   player={x:240,y:596,hp:ship.hp,inv:0,criticalCharge:Math.random(),bank:0,bankX:240};
   enemies=[];bullets=[];hazards=[];hitEffects=[];boosts=cards.map(()=>0);
-  questions=selectQuestions(stage.number);
-  wave=-1;elapsed=0;scroll=0;cooldown=0;supplyBurst=null;bossBurst=null;bossLaser=null;
+  questions=selectQuestions(stage.number,quizzesPerStage);
+  wave=-1;elapsed=0;scroll=0;cooldown=shotInterval;supplyBurst=null;bossBurst=null;bossLaser=null;
   nextWave();
   ready();
 }
@@ -123,29 +126,31 @@ function nextWave() {
   remaining=waves[wave];spawned=0;spawnDelay=.35;
 }
 function spawn(reinforcement=false) {
-  const boss=!reinforcement&&wave===11, item=!reinforcement&&wave%2===1&&!boss;
+  const boss=!reinforcement&&wave===bossWave, item=!reinforcement&&wave%2===1&&!boss;
   const lane=(spawned+Math.floor(wave/2))%routes.length;
   const x=boss||item?240:routes[lane]+([0,-22,22][Math.floor(spawned/3)%3]);
   const tier=reinforcement?Math.max(0,Math.floor(wave/2)-1):Math.floor(wave/2);
-  const hp=boss?bossHealth:item?supplyHealth[tier]:enemyHealth[tier];
+  const health=14+30*tier;
+  const bossHealth=stage.number===8?500000:50000+30000*(stage.number-1);
+  const hp=boss?bossHealth:item?7000+2000*tier:health;
   const sideEntry=!boss&&!item&&[4,6,7].includes(stage.number);
   enemies.push({x,y:sideEntry?36:-95,boss,item,reinforcement,hp,max:hp,age:0,tier,lane,slot:spawned,baseX:x,flightTime:0,shot:item?1.55:.76+(spawned%4)*.29,
-    fired:false, pattern:null, attackBag:[], attackClock:.85, supportClock:boss?5:4});
+    fired:false, pattern:null, attackBag:[], attackClock:.85, supportClock:boss?5:supportRules.supply.interval});
   spawned++;
   if(!reinforcement)remaining--;
+  if(item)spawnEscorts(supportRules.supply);
+}
+function spawnEscorts({batch,cap}) {
+  const active=enemies.filter(enemy=>enemy.reinforcement&&enemy.hp>0).length;
+  for(let i=0;i<Math.min(batch,cap-active);i++)spawn(true);
 }
 function updateReinforcements(leader,dt) {
-  if(leader.boss?!leader.entered:leader.y<140)return;
+  if(leader.boss&&!leader.entered)return;
   leader.supportClock-=dt;
   if(leader.supportClock>0)return;
-  const type=leader.boss?'boss':'supply';
-  const cap=leader.boss?3:2;
-  if(enemies.filter(enemy=>enemy.reinforcement&&enemy.hp>0).length>=cap) {
-    leader.supportClock=1;
-    return;
-  }
-  spawn(true);
-  leader.supportClock=reinforcementInterval[type];
+  const rules=leader.boss?supportRules.boss:supportRules.supply;
+  spawnEscorts(rules);
+  leader.supportClock+=rules.interval;
 }
 function quiz() {
   const source=questions[(wave-1)/2];
@@ -500,7 +505,7 @@ function update(dt) {
   beamTraces=beamTraces.filter(beam=>(beam.time-=dt)>0);
   cooldown-=dt;spawnDelay-=dt;
   if(remaining&&spawnDelay<=0&&enemies.length<6) {spawn();spawnDelay=wave%2===0?.36:.7;}
-  for(const e of enemies) {
+  for(const e of [...enemies]) {
     e.age+=dt;
     if(e.boss) {
       flyBoss(e,dt);
@@ -795,7 +800,7 @@ function frame(now) {
   update(Math.max(0,Math.min((now-last)/1000,.032)));
   last=now;draw();
   if(player&&!status.hidden) {
-    const label=stage.number+' '+stage.name+' · '+ship.name+'<br>체력 '+player.hp+'/'+ship.hp+' · 구간 '+(wave+1)+'/12'+
+    const label=stage.number+' '+stage.name+' · '+ship.name+'<br>체력 '+player.hp+'/'+ship.hp+' · 구간 '+(wave+1)+'/'+waves.length+
       '<progress class="player-health '+(player.hp/ship.hp<=.34?'low':'')+'" aria-label="기체 잔여 체력" value="'+player.hp+'" max="'+ship.hp+'"></progress>';
     if(status.innerHTML!==label)status.innerHTML=label;
   } else if(status.innerHTML!=='1 정글 상공')status.innerHTML='1 정글 상공';

@@ -73,7 +73,7 @@ function buildQuestions(stageNumber) {
     case 3: return quantityQuestions(['m','분','cm','분']);
     case 4:
       return partsBank.map(([n,d],i)=>{
-        const top=i%2===0?n:d+Math.floor(i/3);
+        const top=i%2===0?n:d+Math.floor(i/2);
         const proper=top<d;
         return question(fraction(top,d)+'는 어떤 분수인가요?',
           proper?['진분수','가분수']:['가분수','진분수'],'분자가 분모보다 작으면 진분수, 분자와 분모가 같거나 분자가 더 크면 가분수예요.');
@@ -105,15 +105,15 @@ function buildQuestions(stageNumber) {
       });
   }
 }
-function selectQuestions(stageNumber) {
+function selectQuestions(stageNumber,count) {
   const pool=shuffle(buildQuestions(stageNumber));
   if(stageNumber===2||stageNumber===3) {
-    const first=Math.random()<.5?2:3;
-    return shuffle([...pool.filter(q=>q.group==='fraction').slice(0,first),...pool.filter(q=>q.group==='amount').slice(0,5-first)]);
+    const first=Math.random()<.5?Math.floor(count/2):Math.ceil(count/2);
+    return shuffle([...pool.filter(q=>q.group==='fraction').slice(0,first),...pool.filter(q=>q.group==='amount').slice(0,count-first)]);
   }
   if(stageNumber===8) {
     const selected=['less','equal','greater'].map(group=>pool.find(q=>q.group===group));
-    return shuffle([...selected,...pool.filter(q=>!selected.includes(q)).slice(0,2)]);
+    return shuffle([...selected,...pool.filter(q=>!selected.includes(q)).slice(0,count-selected.length)]);
   }
-  return pool.slice(0,5);
+  return pool.slice(0,count);
 }
