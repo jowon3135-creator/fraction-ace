@@ -8,9 +8,9 @@ const jungle = new Image(), concept = new Image();
 jungle.src = 'assets/jungle.png';
 concept.src = 'assets/concept.png';
 const ships = [
-  {name:'고속형', speed:325, attack:10, hp:4, asset:'speed', bank:1.16, nose:24},
-  {name:'화력형', speed:225, attack:16, hp:6, asset:'firepower', bank:.68, nose:20},
-  {name:'균형형', speed:274, attack:13, hp:5, asset:'balanced', bank:.92, nose:23}
+  {name:'고속형', speed:325, attack:9, hp:4, asset:'speed', bank:1.16, nose:24},
+  {name:'화력형', speed:225, attack:14, hp:6, asset:'firepower', bank:.68, nose:20},
+  {name:'균형형', speed:274, attack:11, hp:5, asset:'balanced', bank:.92, nose:23}
 ];
 for(const model of ships) {
   model.image=new Image();
@@ -19,19 +19,21 @@ for(const model of ships) {
 }
 const waves = [5,1,10,1,15,1,20,1,25,1,30,1];
 const routes = [240,111,369];
-const enemyHealth = [14,17,20,23,26,29];
-const supplyHealth = [120,132,144,156,168];
-const bossHealth = 1150;
+const enemyHealth = [14,23,33,44,56,69];
+const supplyHealth = [550,640,730,820,910];
+const bossHealth = 9600;
+const shotInterval = .20;
+const reinforcementInterval = {supply:6,boss:7};
 const wallCard = 7;
 const enemySize = {normal:37,item:55,boss:185,drone:24};
 const bossPatterns = ['정면 발사','범위 탄막','레이저 빔','추적 미사일','충돌형 소형기'];
 const bossBurstDuration = 1.65;
 const supplyBurstDuration = .76;
 const cards = [
-  ['공격력 증가','기본 공격력 +3'],['치명타 확률 증가','치명타 확률 +10%p'],
-  ['치명타 피해 증가','치명타 배율 +0.5'],['직선 발사 탄환 개수 증가','직선 탄환 +1'],
-  ['사선 발사 탄환 개수 증가','사선 탄환 +2'],['보조 레이저','날개 끝 두 줄 · 기본 공격력의 10%씩 · 모든 적 관통'],
-  ['기본 탄환 관통','통과하는 적 +1'],['기본 탄환 벽 반사','직선 탄환은 상단, 사선 탄환은 측면에서 무작위 각도로 한 번 반사']
+  ['공격력 증가','기본 공격력 +2'],['치명타 확률 증가','치명타 확률 +10%p'],
+  ['치명타 피해 증가','치명타 배율 +0.25'],['직선 발사 탄환 개수 증가','보조 직선탄 +1 · 해당 탄환은 기본 피해의 15%'],
+  ['사선 발사 탄환 개수 증가','사선 탄환 +2 · 해당 탄환은 기본 피해의 9%'],['보조 레이저','날개 끝 두 줄 · 기본 공격력의 10%씩 · 모든 적 관통'],
+  ['기본 탄환 관통','통과하는 적 +1'],['기본 탄환 벽 반사','직선 탄환은 상단, 사선 탄환은 측면에서 무작위 각도로 한 번 반사 · 반사 후 피해 65%']
 ];
 const craftScale=.65;
 let stage=stages[0], beamTraces=[];
@@ -105,7 +107,7 @@ function start(index,stageIndex=0) {
   if(stages[stageIndex+1])loadStageArt(stages[stageIndex+1]);
   beamTraces=[];
   keys.clear();
-  player={x:240,y:596,hp:ship.hp,inv:0,bank:0,bankX:240};
+  player={x:240,y:596,hp:ship.hp,inv:0,criticalCharge:Math.random(),bank:0,bankX:240};
   enemies=[];bullets=[];hazards=[];hitEffects=[];boosts=cards.map(()=>0);
   questions=selectQuestions(stage.number);
   wave=-1;elapsed=0;scroll=0;cooldown=0;supplyBurst=null;bossBurst=null;bossLaser=null;
@@ -120,16 +122,30 @@ function nextWave() {
   wave++;
   remaining=waves[wave];spawned=0;spawnDelay=.35;
 }
-function spawn() {
-  const boss=wave===11, item=wave%2===1&&!boss;
+function spawn(reinforcement=false) {
+  const boss=!reinforcement&&wave===11, item=!reinforcement&&wave%2===1&&!boss;
   const lane=(spawned+Math.floor(wave/2))%routes.length;
   const x=boss||item?240:routes[lane]+([0,-22,22][Math.floor(spawned/3)%3]);
-  const tier=Math.floor(wave/2);
+  const tier=reinforcement?Math.max(0,Math.floor(wave/2)-1):Math.floor(wave/2);
   const hp=boss?bossHealth:item?supplyHealth[tier]:enemyHealth[tier];
   const sideEntry=!boss&&!item&&[4,6,7].includes(stage.number);
-  enemies.push({x,y:sideEntry?36:-95,boss,item,hp,max:hp,age:0,tier,lane,slot:spawned,baseX:x,flightTime:0,shot:item?1.55:.76+(spawned%4)*.29,
-    fired:false, pattern:null, attackBag:[], attackClock:.85});
-  spawned++;remaining--;
+  enemies.push({x,y:sideEntry?36:-95,boss,item,reinforcement,hp,max:hp,age:0,tier,lane,slot:spawned,baseX:x,flightTime:0,shot:item?1.55:.76+(spawned%4)*.29,
+    fired:false, pattern:null, attackBag:[], attackClock:.85, supportClock:boss?5:4});
+  spawned++;
+  if(!reinforcement)remaining--;
+}
+function updateReinforcements(leader,dt) {
+  if(leader.boss?!leader.entered:leader.y<140)return;
+  leader.supportClock-=dt;
+  if(leader.supportClock>0)return;
+  const type=leader.boss?'boss':'supply';
+  const cap=leader.boss?3:2;
+  if(enemies.filter(enemy=>enemy.reinforcement&&enemy.hp>0).length>=cap) {
+    leader.supportClock=1;
+    return;
+  }
+  spawn(true);
+  leader.supportClock=reinforcementInterval[type];
 }
 function quiz() {
   const source=questions[(wave-1)/2];
@@ -242,16 +258,25 @@ function fireWingLasers(damage) {
   }
 }
 function fire() {
-  const count=1+boosts[3];
-  function bullet(offset,vx,damage) {
-    bullets.push({x:player.x+offset,y:player.y-ship.nose*craftScale,vx,vy:-545,damage,straight:vx===0,pierce:boosts[6],bounces:0,hit:new Set()});
+  const attack=ship.attack+boosts[0]*2;
+  // One crit roll per volley, with bounded streaks at the stated long-run rate.
+  player.criticalCharge+=.05+boosts[1]*.1;
+  const critical=player.criticalCharge>=1;
+  if(critical)player.criticalCharge-=1;
+  const multiplier=critical?1.5+boosts[2]*.25:1;
+  function bullet(offset,vx,weight) {
+    bullets.push({x:player.x+offset,y:player.y-ship.nose*craftScale,vx,vy:-545,
+      damage:attack*weight*multiplier,straight:vx===0,pierce:boosts[6],bounces:0,hit:new Set()});
   }
-  const damage=()=> (ship.attack+boosts[0]*3)*(Math.random()<.05+boosts[1]*.1?1.5+boosts[2]*.5:1);
-  for(let i=0;i<count;i++) bullet((i-(count-1)/2)*12,0,damage());
+  bullet(0,0,1);
+  for(let i=1;i<=boosts[3];i++) {
+    const side=i%2===1?-1:1;
+    bullet(side*Math.ceil(i/2)*13,0,.15);
+  }
   for(let i=1;i<=boosts[4];i++) {
-    bullet(-8,-100*i,damage());bullet(8,100*i,damage());
+    bullet(-8,-100*i,.09);bullet(8,100*i,.09);
   }
-  if(boosts[5]) fireWingLasers((ship.attack+boosts[0]*3)/10);
+  if(boosts[5])fireWingLasers(attack/10);
 }
 function hitPlayer() {
   if(player.inv>0)return;
@@ -268,6 +293,14 @@ function spread(x,y,count,center,spacing,speed,r,pattern=null) {
     enemyBullet(x,y,Math.sin(angle)*speed,Math.cos(angle)*speed,r,pattern);
   }
 }
+function aimAtPlayer(x,y) {
+  return Math.atan2(player.x-x,player.y-y);
+}
+function aimedOrigin(enemy,offset=0) {
+  const aim=aimAtPlayer(enemy.x+offset,enemy.y);
+  const distance=enemy.boss?46:enemy.item?15:10;
+  return {x:enemy.x+offset+Math.sin(aim)*distance,y:enemy.y+Math.cos(aim)*distance,aim};
+}
 function nextBossPattern(e) {
   if(!e.attackBag.length) {
     e.attackBag=shuffle([0,1,2,3,4]);
@@ -278,45 +311,57 @@ function nextBossPattern(e) {
 function updateBossAttack(e,dt) {
   if(!e.entered)return;
   if(e.followup&&(e.followup.time-=dt)<=0) {
-    for(const side of [-1,1])spread(e.followup.x+side*6,e.followup.y,7,side*.54,.115,184,7,1);
+    for(const side of [-1,1])spread(e.followup.x+side*6,e.followup.y,7,e.followup.aim+side*.54,.115,184,7,1);
     e.followup=null;
   }
   if(stage.number===3&&e.flightTime%10>=7.1)return;
   if(e.pattern===null)nextBossPattern(e);
   e.attackClock-=dt;
   if(e.attackClock>0)return;
-  const y=e.y+55;
+  const {x,y,aim}=aimedOrigin(e);
   const alternating=stage.number===6?(e.port===1?-1:1):0;
   e.port=alternating;
   switch(e.pattern) {
     case 0:
-      for(const offset of [-20,0,20])enemyBullet(e.x+offset+alternating*27,y,0,237,7,0);
+      const port=aimedOrigin(e,alternating*27);
+      for(const offset of [-20,0,20])enemyBullet(port.x+Math.cos(port.aim)*offset,port.y-Math.sin(port.aim)*offset,
+        Math.sin(port.aim)*215,Math.cos(port.aim)*215,7,0);
       break;
     case 1:
       if(stage.number===5) {
         for(let i=0;i<18;i++) {
           if(i<=1||i===17)continue;
-          const angle=i*Math.PI/9;
+          const angle=aim+i*Math.PI/9;
           enemyBullet(e.x+Math.sin(angle)*60,e.y+Math.cos(angle)*60,Math.sin(angle)*178,Math.cos(angle)*178,7,1);
         }
       } else if(stage.number===8) {
-        for(const side of [-1,1])spread(e.x+side*6,y,7,side*.54,.115,184,7,1);
-        e.followup={time:.48,y,x:e.x};
+        for(const side of [-1,1])spread(x+side*6,y,7,aim+side*.54,.115,184,7,1);
+        e.followup={time:.48,x,y,aim};
       } else if(stage.number===6) {
-        for(const side of [-1,1])spread(e.x+side*27,y,7,side*.34,.095,175,7,1);
-      } else spread(e.x,y,13,0,.125,175,7,1);
+        for(const side of [-1,1]) {
+          const port=aimedOrigin(e,side*27);
+          spread(port.x,port.y,7,port.aim+side*.34,.095,175,7,1);
+        }
+      } else spread(x,y,13,aim,.125,175,7,1);
       break;
-    case 2:
-      bossLaser={x:e.x+(stage.number===6?-26:0),y,warning:.8,remaining:.46,width:19};
+    case 2: {
+      const port=aimedOrigin(e,stage.number===6?-26:0);
+      bossLaser={x:port.x,y:port.y,dx:Math.sin(port.aim),dy:Math.cos(port.aim),warning:.8,remaining:.46,width:19};
       break;
+    }
     case 3:
       for(const side of [-1,0,1]) {
-        hazards.push({x:e.x+side*31,y,vx:side*49,vy:132,r:7,pattern:3,missile:true,steering:1.35});
+        const angle=aim+side*.39;
+        hazards.push({x:x+Math.cos(aim)*side*31,y:y-Math.sin(aim)*side*31,
+          vx:Math.sin(angle)*132,vy:Math.cos(angle)*132,r:7,pattern:3,missile:true,steering:1.35});
       }
       break;
     case 4:
       for(const side of [-1,0,1]) {
-        enemies.push({x:e.x+side*32,y,vx:side*61,drone:true,hp:25,max:25,age:0});
+        const angle=aim+side*.36;
+        enemies.push({x:x+Math.cos(aim)*side*32,y:y-Math.sin(aim)*side*32,
+          vx:Math.sin(angle)*160,vy:Math.cos(angle)*160,angle:-angle,
+          drone:true,hp:25,max:25,age:0});
       }
       break;
   }
@@ -331,14 +376,19 @@ function updateBossLaser(dt) {
   }
   bossLaser.remaining-=dt;
   if(bossLaser.remaining<=0) {bossLaser=null;return;}
-  if(player.y>=bossLaser.y&&Math.abs(player.x-bossLaser.x)<bossLaser.width+7)hitPlayer();
+  const {x,y,dx,dy,width}=bossLaser;
+  const offsetX=player.x-x,offsetY=player.y-y;
+  if(offsetX*dx+offsetY*dy>=0&&Math.abs(offsetX*dy-offsetY*dx)<width+7)hitPlayer();
 }
 function updateEnemyAttack(e,dt) {
-  if(e.boss) {updateBossAttack(e,dt);return;}
+  if(e.boss) {updateBossAttack(e,dt);updateReinforcements(e,dt);return;}
+  if(e.item)updateReinforcements(e,dt);
   if(e.y<45||(!e.item&&e.fired))return;
   e.shot-=dt;
   if(e.shot>0)return;
-  spread(e.x,e.y+18,e.tier+(e.item?2:1),0,.14,e.item?147:107,5);
+  const {x,y,aim}=aimedOrigin(e);
+  const count=e.tier+(e.item?2:1);
+  spread(x,y,count,aim+(count%2===0?.10:0),.20,e.item?147:107,5);
   e.fired=true;
   e.shot=2.5;
 }
@@ -351,13 +401,15 @@ function hitEnemy(enemy,bullet) {
   if(enemy.hp>0)return;
   if(enemy.item) {
     supplyBurst={x:enemy.x,y:enemy.y,time:0};
+    for(const escort of enemies)if(escort.reinforcement)escort.hp=0;
+    hazards=[];bullets=[];beamTraces=[];
     overlay('supplyBurst');
     return;
   }
   hitEffects.push({x:enemy.x,y:enemy.y,t:.26,size:enemy.boss?85:28});
   if(enemy.boss) {
     bossBurst={x:enemy.x,y:enemy.y,time:0};
-    hazards=[];bossLaser=null;bullets=[];enemies=[];
+    hazards=[];bossLaser=null;bullets=[];enemies=[];beamTraces=[];
     overlay('bossBurst');
   }
 }
@@ -383,6 +435,7 @@ function flyEnemy(e,dt) {
   e.angle=e.flightTime>.06?clamp(-(e.x-oldX)/dt/245,-.48,.48):0;
   e.y+=(stage.number===2?82:117)*dt;
   if(e.y>H+44) {
+    if(e.reinforcement){e.hp=0;return;}
     e.y=[4,6,7].includes(stage.number)?36:-48;e.flightTime=0;e.fired=false;e.shot=1.10;
   }
 }
@@ -452,18 +505,17 @@ function update(dt) {
     if(e.boss) {
       flyBoss(e,dt);
     } else if(e.drone) {
-      e.y+=160*dt;
-      e.x=clamp(e.x+e.vx*dt,13,W-13);
-      if(e.y>H+25)e.hp=0;
+      e.x+=e.vx*dt;e.y+=e.vy*dt;
+      if(e.y>H+25||e.y<-25||e.x<-25||e.x>W+25)e.hp=0;
       continue;
     } else if(e.item) {
       e.y=Math.min(194,e.y+(stage.number===2?88:126)*dt);
     } else {
       flyEnemy(e,dt);
     }
-    updateEnemyAttack(e,dt);
+    if(e.hp>0)updateEnemyAttack(e,dt);
   }
-  if(cooldown<=0) {fire();cooldown=.125;}
+  if(cooldown<=0) {fire();cooldown+=shotInterval;}
   if(mode!=='fight') {
     enemies=enemies.filter(e=>e.hp>0);
     return;
@@ -475,7 +527,7 @@ function update(dt) {
       const speed=Math.hypot(b.vx,b.vy);
       const sign=Math.random()<.5?-1:1;
       b.y=3;b.vx=sign*Math.sin(angle)*speed;b.vy=Math.cos(angle)*speed;
-      b.bounces=1;
+      b.bounces=1;b.damage*=.65;
     }
     if(b.x<3||b.x>W-3) {
       if(boosts[wallCard]&&!b.bounces&&!b.straight) {
@@ -486,7 +538,7 @@ function update(dt) {
         b.vx=side*Math.sin(angle)*speed;
         b.vy=-Math.cos(angle)*speed;
         b.bounces=1;
-        b.damage*=.85;
+        b.damage*=.65;
       } else b.used=true;
     }
     if(b.used)continue;
@@ -505,15 +557,17 @@ function update(dt) {
   updateBossLaser(dt);
   if(mode!=='fight')return;
   for(const b of hazards) {
-    if(b.missile&&b.steering>0&&player.y>b.y) {
-      const target=clamp((player.x-b.x)*1.2,-96,96);
-      b.vx+=clamp(target-b.vx,-70*dt,70*dt);
+    if(b.missile&&b.steering>0) {
+      const angle=Math.atan2(b.vx,b.vy),target=aimAtPlayer(b.x,b.y);
+      const delta=Math.atan2(Math.sin(target-angle),Math.cos(target-angle));
+      const heading=angle+clamp(delta,-.62*dt,.62*dt);
+      b.vx=Math.sin(heading)*132;b.vy=Math.cos(heading)*132;
       b.steering-=dt;
     }
     b.x+=b.vx*dt;b.y+=b.vy*dt;
     if(Math.hypot(b.x-player.x,b.y-player.y)<b.r+9) {b.used=true;hitPlayer();}
   }
-  hazards=hazards.filter(b=>!b.used&&b.y<H+20&&b.x>-20&&b.x<W+20);
+  hazards=hazards.filter(b=>!b.used&&b.y<H+20&&b.y>-20&&b.x>-20&&b.x<W+20);
   for(const e of enemies) {
     const dx=(e.x-player.x)/(e.boss?81:e.item?29:e.drone?15:24);
     const dy=(e.y-player.y)/(e.boss?53:e.drone?14:25);
@@ -652,7 +706,7 @@ function drawBossLaser(laser) {
   ctx.strokeStyle=active?'#f75465cc':'#ffdb89b0';
   ctx.lineWidth=active?laser.width*2:3;
   if(!active)ctx.setLineDash([7,8]);
-  ctx.beginPath();ctx.moveTo(laser.x,laser.y);ctx.lineTo(laser.x,H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(laser.x,laser.y);ctx.lineTo(laser.x+laser.dx*1000,laser.y+laser.dy*1000);ctx.stroke();
   if(active) {
     ctx.strokeStyle='#fff4d6';ctx.lineWidth=7;ctx.stroke();
   }
