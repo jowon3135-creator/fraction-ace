@@ -17,7 +17,7 @@ for(const model of ships) {
   model.image.onload=()=>{if(mode==='menu')drawShipPreviews();};
   model.image.src='assets/ships/'+model.asset+'.png';
 }
-const regularWaveCounts = [5,10,15,20,25,30,5,10,15,20,25,30];
+const regularWaveCounts = [5,10,15,20,25,30,5,10,15];
 const waves = regularWaveCounts.flatMap(count=>[count,1]);
 const bossWave = waves.length-1;
 const quizzesPerStage = regularWaveCounts.length-1;
@@ -130,9 +130,9 @@ function spawn(reinforcement=false) {
   const lane=(spawned+Math.floor(wave/2))%routes.length;
   const x=boss||item?240:routes[lane]+([0,-22,22][Math.floor(spawned/3)%3]);
   const tier=reinforcement?Math.max(0,Math.floor(wave/2)-1):Math.floor(wave/2);
-  const health=14+30*tier;
-  const bossHealth=stage.number===8?500000:50000+30000*(stage.number-1);
-  const hp=boss?bossHealth:item?7000+2000*tier:health;
+  const health=15+15*tier;
+  const bossHealth=stage.number===8?100000:20000+2000*(stage.number-1);
+  const hp=boss?bossHealth:item?6000+500*tier:health;
   const sideEntry=!boss&&!item&&[4,6,7].includes(stage.number);
   enemies.push({x,y:sideEntry?36:-95,boss,item,reinforcement,hp,max:hp,age:0,tier,lane,slot:spawned,baseX:x,flightTime:0,shot:item?1.55:.76+(spawned%4)*.29,
     fired:false, pattern:null, attackBag:[], attackClock:.85, supportClock:boss?5:supportRules.supply.interval});
